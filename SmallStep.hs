@@ -4,8 +4,8 @@ import Estado
 -- SMALL STEP INTERATIVA
 -- ADICIONAR ESCESSÕES - THROW CATCH
 
-data F    =     Skip
-              deriving(Show)
+-- data F    =     Skip
+--               deriving(Show)
 
 data AExp =     Num Int
                 |Var String
@@ -26,8 +26,10 @@ data CExp =    While BExp CExp
                 | If BExp CExp CExp
                 | Seq CExp CExp
                 | Atrib AExp AExp
-                | F
-        deriving(Show)                
+                | Try CExp CExp
+                | Skip
+                | Throw
+        deriving(Show)
 
 
 -- EXPRESSÃO ARITIMÉTICA
@@ -56,7 +58,7 @@ aSmallStep (Sub (Num x) e2, s)          = let (ef, _) = aSmallStep(ef, s)
 aSmallStep (Sub e1 e2,s)                = let (ef,_) = aSmallStep (e1, s)
                                                 in (Sub ef e2, s)
 
--- sub
+-- mult
 aSmallStep (Mul (Num x) (Num y), s)     = (Num (x*y), s)
 aSmallStep (Mul (Num x) e2, s)          = let (ef, _) = aSmallStep(ef, s)
                                                 in (Mul (Num x) ef, s)
@@ -77,7 +79,7 @@ bSmallStep :: (BExp,Estado) -> (BExp,Estado)
 -- not
 bSmallStep (Not FALSE,s)        = (TRUE,s)
 bSmallStep (Not TRUE,s)         = (FALSE, s)
-bSmallStep (Not b, s) = let (bn,sn) = bSmallStep (b,s)
+bSmallStep (Not b, s)           = let (bn,sn) = bSmallStep (b,s)
                                         in (Not bn ,sn)
 --and
 bSmallStep (And TRUE b2,s)      = (b2,s)
@@ -91,30 +93,49 @@ bSmallStep (Or b1 b2, s)        = let (bn, sn) = bSmallStep (b1, s)
                                         in (Or bn b2, sn)
 
 --Ig
-bSmallStep (Ig b1 b2, s)   
+bSmallStep (Ig (Num n1) (Num n2), s) = if n1 == n2 then (TRUE, s) else (FALSE, s)
+bSmallStep (Ig (Num n1) e2, s)  = let (ef, sn) = aSmallStep(e2, s)
+                                        in (Ig (Num 1) ef, sn)
+bSmallStep (Ig e1 e2, s)        = let (en, sn) = aSmallStep(e1, s)
+                                        in (Ig en e2, sn)
 
 
+-- COMANDOS
+interpretC :: (CExp,Estado) -> (CExp,Estado)
+interpretC (b,s) = if isFinalC b then (b,s) else interpretC (cSmallStep (b,s))
 
---bbigStep (Ig e1 e2,s )  = 
+isFinalC :: CExp -> Bool
+isFinalC Skip = True
+isFinalC _ = False
 
+cSmallStep :: (CExp,Estado) -> (CExp,Estado)
 
+--while
+cSmallStep (While b c,s) = (If b (Seq c (While b c)) Skip, s)
 
--- interpretC :: (CExp,Estado) -> (CExp,Estado)
--- interpretC (b,s) = ?
+--if
+cSmallStep (If FALSE c1 c2, s)  = (c2, s)
+cSmallStep (If TRUE c1 c2, s)   = (c1, s)
+cSmallStep (If b c1 c2, s)      = let (b2, s2) = bSmallStep (b, s)
+                                        in (If b2 c1 c2, s)
 
--- isFinalC :: CExp -> Bool
+-- Try catch
+cSmallStep (Try Skip c2,s)  = (Skip,s)
+cSmallStep (Try Throw c2,s) = (c2,s)
+cSmallStep (Try c c2,s)     = let (cf,s2) = cSmallStep(c,s)
+                                in (Try cf c2,s2)
 
-csmallStep :: (CExp,Estado) -> (CExp,Estado)
-csmallStep (If FALSE c1 c2, s)  = (c2, s)
-csmallStep (If TRUE c1 c2, s)   = (c1, s)
-csmallstep (If b c1 c2, s)      = let (b2, s2) = bSmallStep (b, s) 
-                                        in (If b2 c1 c2, s)       
+-- Seq
+cSmallStep (Seq Skip c,s)   = (c,s)
+cSmallStep (Seq Throw c,s)  = (Throw,s)
+cSmallStep (Seq c1 c2,s)    = let (cf,s1) = cSmallStep(c1,s)
+                                in (Seq cf c2,s1)
 
---cbigStep (If b c1 c2,s) = 
---cbigStep (Seq c1 c2,s)  = 
---cbigStep (Atrib (Var x) e,s) = 
-
-
+-- Atrib
+cSmallStep (Atrib (Var x) (Num y),s)    = let sf = mudaVar s x y
+                                                in (Skip,sf)
+cSmallStep (Atrib (Var x) e,s)          = let (ef,sf) = aSmallStep(e,s)
+                                                in (Atrib (Var x) ef,sf)
 
 meuEstado :: Estado
 meuEstado = [("x",3), ("y",0), ("z",0)]
@@ -132,4 +153,10 @@ exemplo2 = And (And TRUE (Not FALSE)) (And (Not (Not TRUE)) TRUE)
 -- *Main> interpretB (exemplo2,meuEstado)
 -- (TRUE,[("x",3),("y",0),("z",0)])
 
+exemplo3 :: CExp
+exemplo3 = While (Ig (Var "x") (Num 10)) (Atrib (Var "x") (Num 1))
+-- (Skip,[("x",1),("y",0),("z",0)])
 
+exemplo4:: CExp
+exemplo4 = Try (Seq (Atrib (Var "x") (Num 4)) Throw ) (Atrib (Var "x") (Num 9))
+-- (Skip,[("x",3),("y",0),("z",0)])
